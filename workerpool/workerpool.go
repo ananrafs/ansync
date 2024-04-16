@@ -1,6 +1,7 @@
 package workerpool
 
 import (
+	"github.com/ananrafs/ansync"
 	"sync"
 )
 
@@ -8,15 +9,14 @@ type (
 	workerPool struct {
 		maxWorker   int
 		action      func(interface{}) (interface{}, error)
-		queuedTaskC chan WorkerAction
+		queuedTaskC chan ansync.Task
 		wg          sync.WaitGroup
 	}
 
-	Options      func(*workerPool)
-	WorkerAction func() (interface{}, error)
+	Options func(*workerPool)
 )
 
-func (wp *workerPool) addTask(task WorkerAction) {
+func (wp *workerPool) addTask(task ansync.Task) {
 	wp.queuedTaskC <- task
 }
 
@@ -61,12 +61,12 @@ func WithMaxWorker(maxWorker int) Options {
 	}
 }
 
-func Do(actions []WorkerAction, opts ...Options) (responseHandler func(func(<-chan interface{}), func(<-chan error)), closer func()) {
+func Do(tasks []ansync.Task, opts ...Options) (responseHandler func(func(<-chan interface{}), func(<-chan error)), closer func()) {
 	wp := defaultWorkerPool()
 	for _, opt := range opts {
 		opt(wp)
 	}
-	wp.queuedTaskC = make(chan WorkerAction, wp.maxWorker)
+	wp.queuedTaskC = make(chan ansync.Task, wp.maxWorker)
 
 	var (
 		done = make(chan interface{}, 1)
@@ -74,10 +74,10 @@ func Do(actions []WorkerAction, opts ...Options) (responseHandler func(func(<-ch
 	)
 
 	wp.run(done, fail)
-	wp.wg.Add(len(actions))
+	wp.wg.Add(len(tasks))
 
 	go func() {
-		for _, task := range actions {
+		for _, task := range tasks {
 			wp.addTask(task)
 		}
 	}()
@@ -103,7 +103,7 @@ func Do(actions []WorkerAction, opts ...Options) (responseHandler func(func(<-ch
 //
 //func main() {
 //	handle, closer := workerpool.Do(
-//		[]workerpool.WorkerAction{
+//		[]ansync.Task{
 //			// define task to perform
 //			func() (interface{}, error) {
 //				for i := 0; i < 10; i++ {

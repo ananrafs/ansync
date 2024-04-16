@@ -1,11 +1,14 @@
 package cancellation
 
-import "context"
+import (
+	"context"
+	"github.com/ananrafs/ansync"
+)
 
-func Do(ctx context.Context, f func() error) error {
+func Do(ctx context.Context, act ansync.Action) error {
 	done := make(chan error, 1)
 	go func() {
-		err := f()
+		err := act()
 		done <- err
 		close(done)
 	}()
@@ -18,12 +21,12 @@ func Do(ctx context.Context, f func() error) error {
 	}
 }
 
-func DoWithReturn(ctx context.Context, f func() (interface{}, error)) (interface{}, error) {
+func DoWithReturn(ctx context.Context, task ansync.Task) (interface{}, error) {
 	done := make(chan interface{}, 1)
 	fail := make(chan error, 1)
 
 	go func() {
-		res, err := f()
+		res, err := task()
 		if err != nil {
 			fail <- err
 			close(fail)
