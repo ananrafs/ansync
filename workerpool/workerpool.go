@@ -11,9 +11,23 @@ type (
 		action      func(interface{}) (interface{}, error)
 		queuedTaskC chan ansync.Task
 		wg          sync.WaitGroup
+
+		onClose func()
+		handler func(onSuccess func(resp <-chan interface{}), onFailed func(errs <-chan error))
 	}
 
 	Options func(*workerPool)
+
+	WorkerPool interface {
+		// Await wait all task to finish
+		Await()
+
+		// Handle response and error from finished task
+		Handle(onSuccess func(resp <-chan interface{}), onFailed func(errs <-chan error))
+
+		// Submit add another task
+		Submit(ansync.Task)
+	}
 )
 
 func (wp *workerPool) addTask(task ansync.Task) {
@@ -61,7 +75,26 @@ func WithMaxWorker(maxWorker int) Options {
 	}
 }
 
-func Do(tasks []ansync.Task, opts ...Options) (responseHandler func(func(<-chan interface{}), func(<-chan error)), closer func()) {
+func (wp *workerPool) Handle(onSuccess func(resp <-chan interface{}), onFailed func(errs <-chan error)) {
+	wp.handler(func(resp <-chan interface{}) {
+		onSuccess(resp)
+	}, func(errs <-chan error) {
+		onFailed(errs)
+	})
+}
+
+func (wp *workerPool) Await() {
+	wp.onClose()
+}
+
+func (wp *workerPool) Submit(task ansync.Task) {
+	wp.wg.Add(1)
+	go func() {
+		wp.addTask(task)
+	}()
+}
+
+func Do(tasks []ansync.Task, opts ...Options) WorkerPool {
 	wp := defaultWorkerPool()
 	for _, opt := range opts {
 		opt(wp)
@@ -82,64 +115,22 @@ func Do(tasks []ansync.Task, opts ...Options) (responseHandler func(func(<-chan 
 		}
 	}()
 
-	return func(onSuccess func(<-chan interface{}), onFailed func(<-chan error)) {
-			go func() {
-				onSuccess(done)
-			}()
-			go func() {
-				onFailed(fail)
-			}()
-		}, func() {
-			wp.wg.Wait()
-			wp.close(func() {
-				close(done)
-				close(fail)
-			})
-		}
+	wp.onClose = func() {
+		wp.wg.Wait()
+		wp.close(func() {
+			close(done)
+			close(fail)
+		})
+	}
 
+	wp.handler = func(onSuccess func(resp <-chan interface{}), onFailed func(errs <-chan error)) {
+		go func() {
+			onSuccess(done)
+		}()
+		go func() {
+			onFailed(fail)
+		}()
+	}
+
+	return wp
 }
-
-//// EXAMPLE
-//
-//func main() {
-//	handle, closer := workerpool.Do(
-//		[]ansync.Task{
-//			// define task to perform
-//			func() (interface{}, error) {
-//				for i := 0; i < 10; i++ {
-//					fmt.Printf("%d from task 1 \n", i)
-//					time.Sleep(time.Second)
-//				}
-//				return 12, nil
-//			},
-//			func() (interface{}, error) {
-//				for i := 0; i < 10; i++ {
-//					fmt.Printf("%d from task 2 \n", i*2)
-//					time.Sleep(2 * time.Second)
-//				}
-//				return nil, errors.New("matatata matuta")
-//			},
-//			func() (interface{}, error) {
-//				for i := 0; i < 10; i++ {
-//					fmt.Printf("%d from task 3 \n", i*3)
-//					time.Sleep(3 * time.Second)
-//				}
-//				return 32, nil
-//			},
-//		},
-//		workerpool.WithMaxWorker(2),
-//	)
-// 	// need to defer closer
-//	defer closer()
-
-// 	// handling response and error
-//	handle(func(res <-chan interface{}) {
-//		for r := range res {
-//			fmt.Println(r)
-//		}
-//	}, func(errors <-chan error) {
-//		for err := range errors {
-//			fmt.Println(err)
-//		}
-//	})
-//}
