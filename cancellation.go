@@ -1,11 +1,10 @@
-package cancellation
+package ansync
 
 import (
 	"context"
-	"github.com/ananrafs/ansync"
 )
 
-func Do(ctx context.Context, act ansync.Action) error {
+func DoActionWithCancellation(ctx context.Context, act Action) error {
 	done := make(chan error, 1)
 	go func() {
 		err := act()
@@ -21,7 +20,7 @@ func Do(ctx context.Context, act ansync.Action) error {
 	}
 }
 
-func DoWithReturn(ctx context.Context, task ansync.Task) (interface{}, error) {
+func DoTaskWithCancellation(ctx context.Context, task Task) (interface{}, error) {
 	done := make(chan interface{}, 1)
 	fail := make(chan error, 1)
 

@@ -1,7 +1,6 @@
-package workerpool
+package ansync
 
 import (
-	"github.com/ananrafs/ansync"
 	"sync"
 )
 
@@ -9,7 +8,7 @@ type (
 	workerPool struct {
 		maxWorker   int
 		action      func(interface{}) (interface{}, error)
-		queuedTaskC chan ansync.Task
+		queuedTaskC chan Task
 		wg          sync.WaitGroup
 
 		onClose func()
@@ -26,11 +25,11 @@ type (
 		Handle(onSuccess func(resp <-chan interface{}), onFailed func(errs <-chan error))
 
 		// Submit add another task
-		Submit(ansync.Task)
+		Submit(Task)
 	}
 )
 
-func (wp *workerPool) addTask(task ansync.Task) {
+func (wp *workerPool) addTask(task Task) {
 	wp.queuedTaskC <- task
 }
 
@@ -87,19 +86,19 @@ func (wp *workerPool) Await() {
 	wp.onClose()
 }
 
-func (wp *workerPool) Submit(task ansync.Task) {
+func (wp *workerPool) Submit(task Task) {
 	wp.wg.Add(1)
 	go func() {
 		wp.addTask(task)
 	}()
 }
 
-func Do(tasks []ansync.Task, opts ...Options) WorkerPool {
+func DoWithWorkerPool(tasks []Task, opts ...Options) WorkerPool {
 	wp := defaultWorkerPool()
 	for _, opt := range opts {
 		opt(wp)
 	}
-	wp.queuedTaskC = make(chan ansync.Task, wp.maxWorker)
+	wp.queuedTaskC = make(chan Task, wp.maxWorker)
 
 	var (
 		done = make(chan interface{}, 1)

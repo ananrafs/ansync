@@ -1,15 +1,21 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"github.com/ananrafs/ansync"
-	"github.com/ananrafs/ansync/workerpool"
 	"time"
 )
 
 func main() {
-	wp := workerpool.Do(
+	//DoWorkerPoolExample()
+	//DoCancelAndRetry()
+	//DoCancelTaskAndRetry()
+}
+
+func DoWorkerPoolExample() {
+	wp := ansync.DoWithWorkerPool(
 		[]ansync.Task{
 			// define task to perform
 			func() (interface{}, error) {
@@ -34,7 +40,7 @@ func main() {
 				return "natsu", nil
 			},
 		},
-		workerpool.WithMaxWorker(2),
+		ansync.WithMaxWorker(2),
 	)
 	// need to defer closer
 	defer wp.Await()
@@ -65,4 +71,62 @@ func main() {
 			fmt.Println("[error]", err)
 		}
 	})
+}
+
+func DoCancelAndRetry() {
+	parentCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	err := ansync.DoActionWithCancellation(parentCtx, func() error {
+		return ansync.DoActionWithRetry(
+			func() error {
+				childCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				return ansync.DoActionWithCancellation(childCtx, func() error {
+					for i := 0; i < 10; i++ {
+						fmt.Printf("%d second \n", i)
+						time.Sleep(time.Second)
+					}
+					return nil
+				})
+			},
+			ansync.WithRetry(3),
+			ansync.WithDelay(func(attempt int) time.Duration {
+				return time.Duration(attempt+1) * time.Second
+			}),
+		)
+	})
+	if err != nil {
+		fmt.Println("[error]", err)
+	}
+	//time.Sleep(20 * time.Second)
+}
+
+func DoCancelTaskAndRetry() {
+	parentCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	resp, err := ansync.DoTaskWithCancellation(parentCtx, func() (interface{}, error) {
+		return ansync.DoTaskWithRetry(
+			func() (interface{}, error) {
+				childCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				defer cancel()
+				return ansync.DoTaskWithCancellation(childCtx, func() (interface{}, error) {
+					for i := 0; i < 10; i++ {
+						fmt.Printf("%d second \n", i)
+						time.Sleep(time.Second)
+					}
+					return 31, nil
+				})
+			},
+			ansync.WithRetry(3),
+			ansync.WithDelay(func(attempt int) time.Duration {
+				return time.Duration(attempt+1) * time.Second
+			}),
+		)
+	})
+	if err != nil {
+		fmt.Println("[error]", err)
+	} else {
+		fmt.Println("resp", resp)
+	}
+	//time.Sleep(20 * time.Second)
 }
