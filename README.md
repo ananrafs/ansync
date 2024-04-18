@@ -11,14 +11,14 @@ Anysnc is tools related to goroutine, perform cancellable operation/task, worker
 import (
 	"context"
 	"fmt"
-	"github.com/ananrafs/ansync/cancellation"
+	"github.com/ananrafs/ansync"
 	"time"
 )
 
 func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	err := cancellation.Do(ctx, func() error {
+	err := ansync.DoActionWithCancellation(ctx, func() error {
 		for i := 0; i < 10; i++ {
 			fmt.Printf("%d\n", i)
 			time.Sleep(time.Second)
@@ -32,6 +32,50 @@ func main() {
 ```
 will panic after 2 seconds
 
+## retry
+### example
+```go
+import (
+    "context"
+    "errors"
+    "fmt"
+    "github.com/ananrafs/ansync"
+    "time"
+)
+func main() {
+    parentCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+    defer cancel()
+	
+    resp, err := ansync.DoTaskWithCancellation(parentCtx, func() (interface{}, error) {
+        return ansync.DoTaskWithRetry(
+                func() (interface{}, error) {
+                    childCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+                    defer cancel()
+					
+                    return ansync.DoTaskWithCancellation(childCtx, func() (interface{}, error) {
+                        for i := 0; i < 10; i++ {
+                            fmt.Printf("%d second \n", i)
+                            time.Sleep(time.Second)
+                        }
+						
+                        return 31, nil
+                    })
+                },
+                    ansync.WithRetry(3), 
+		    ansync.WithDelay(func(attempt int) time.Duration {
+                        return time.Duration(attempt+1) * time.Second
+                    }),
+                )   
+    })
+	
+    if err != nil {
+        fmt.Println("[error]", err)
+    } else {
+        fmt.Println("resp", resp)
+    }
+}
+```
+
 ## workerpool
 ### example
 ```go
@@ -39,12 +83,11 @@ import (
     "errors"
     "fmt"
     "github.com/ananrafs/ansync"
-    "github.com/ananrafs/ansync/workerpool"
     "time"
 )
 
 func main() {
-    wp := workerpool.Do(
+    wp := ansync.DoWithWorkerPool(
             []ansync.Task{
                 // define task to perform
                 func() (interface{}, error) {
@@ -69,7 +112,7 @@ func main() {
                     return "natsu", nil
                 },
             },
-                workerpool.WithMaxWorker(2),
+                ansync.WithMaxWorker(2),
         )
         // need to await
         defer wp.Await()
