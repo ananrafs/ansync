@@ -9,9 +9,9 @@ import (
 )
 
 func main() {
-	//DoWorkerPoolExample()
-	//DoCancelAndRetry()
-	//DoCancelTaskAndRetry()
+	DoWorkerPoolExample()
+	DoCancelAndRetry()
+	DoCancelTaskAndRetry()
 	DoWithPipeline()
 }
 
@@ -138,6 +138,7 @@ func DoWithPipeline() {
 		for i := 0; i < 100; i++ {
 			stream <- i
 		}
+		close(stream)
 	}()
 
 	out, err := ansync.DoWithPipeline(stream, []ansync.Pipe[int]{
@@ -167,15 +168,22 @@ func DoWithPipeline() {
 			}()
 			return out, nil
 		},
-	})
+	},
+		ansync.WithOnErrorPipe[int](
+			func(err error) {
+				fmt.Println("[error on pipe]", err)
+			},
+		),
+	)
 	if err != nil {
 		fmt.Println("[error]", err)
 	}
+	done := make(chan struct{})
 	go func() {
 		for res := range out {
 			fmt.Println(res, "res")
 		}
+		done <- struct{}{}
 	}()
-
-	time.Sleep(20 * time.Second)
+	<-done
 }
