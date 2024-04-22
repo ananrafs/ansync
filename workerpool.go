@@ -5,35 +5,34 @@ import (
 )
 
 type (
-	workerPool struct {
+	workerPool[T any] struct {
 		maxWorker   int
-		action      func(interface{}) (interface{}, error)
-		queuedTaskC chan Task
+		queuedTaskC chan Task[T]
 		wg          sync.WaitGroup
 
 		onClose func()
-		handler func(onSuccess func(resp <-chan interface{}), onFailed func(errs <-chan error))
+		handler func(onSuccess func(resp <-chan T), onFailed func(errs <-chan error))
 	}
 
-	Options func(*workerPool)
+	WorkerPoolOption[T any] func(*workerPool[T])
 
-	WorkerPool interface {
+	WorkerPool[T any] interface {
 		// Await wait all task to finish
 		Await()
 
 		// Handle response and error from finished task
-		Handle(onSuccess func(resp <-chan interface{}), onFailed func(errs <-chan error))
+		Handle(onSuccess func(resp <-chan T), onFailed func(errs <-chan error))
 
 		// Submit add another task
-		Submit(Task)
+		Submit(Task[T])
 	}
 )
 
-func (wp *workerPool) addTask(task Task) {
+func (wp *workerPool[T]) addTask(task Task[T]) {
 	wp.queuedTaskC <- task
 }
 
-func (wp *workerPool) run(outChan chan<- interface{}, errChan chan<- error) {
+func (wp *workerPool[T]) run(outChan chan<- T, errChan chan<- error) {
 	for i := 0; i < wp.maxWorker; i++ {
 		wID := i + 1
 
@@ -52,21 +51,21 @@ func (wp *workerPool) run(outChan chan<- interface{}, errChan chan<- error) {
 	}
 }
 
-func (wp *workerPool) close(onClose func()) {
+func (wp *workerPool[T]) close(onClose func()) {
 	close(wp.queuedTaskC)
 	if onClose != nil {
 		onClose()
 	}
 }
 
-func defaultWorkerPool() *workerPool {
-	return &workerPool{
+func defaultWorkerPool[T any]() *workerPool[T] {
+	return &workerPool[T]{
 		maxWorker: 1,
 	}
 }
 
-func WithMaxWorker(maxWorker int) Options {
-	return func(pool *workerPool) {
+func WithMaxWorker[T any](maxWorker int) WorkerPoolOption[T] {
+	return func(pool *workerPool[T]) {
 		if maxWorker < 1 {
 			return
 		}
@@ -74,34 +73,34 @@ func WithMaxWorker(maxWorker int) Options {
 	}
 }
 
-func (wp *workerPool) Handle(onSuccess func(resp <-chan interface{}), onFailed func(errs <-chan error)) {
-	wp.handler(func(resp <-chan interface{}) {
+func (wp *workerPool[T]) Handle(onSuccess func(resp <-chan T), onFailed func(errs <-chan error)) {
+	wp.handler(func(resp <-chan T) {
 		onSuccess(resp)
 	}, func(errs <-chan error) {
 		onFailed(errs)
 	})
 }
 
-func (wp *workerPool) Await() {
+func (wp *workerPool[T]) Await() {
 	wp.onClose()
 }
 
-func (wp *workerPool) Submit(task Task) {
+func (wp *workerPool[T]) Submit(task Task[T]) {
 	wp.wg.Add(1)
 	go func() {
 		wp.addTask(task)
 	}()
 }
 
-func DoWithWorkerPool(tasks []Task, opts ...Options) WorkerPool {
-	wp := defaultWorkerPool()
+func DoWithWorkerPool[T any](tasks []Task[T], opts ...WorkerPoolOption[T]) WorkerPool[T] {
+	wp := defaultWorkerPool[T]()
 	for _, opt := range opts {
 		opt(wp)
 	}
-	wp.queuedTaskC = make(chan Task, wp.maxWorker)
+	wp.queuedTaskC = make(chan Task[T], wp.maxWorker)
 
 	var (
-		done = make(chan interface{}, 1)
+		done = make(chan T, 1)
 		fail = make(chan error, 1)
 	)
 
@@ -122,7 +121,7 @@ func DoWithWorkerPool(tasks []Task, opts ...Options) WorkerPool {
 		})
 	}
 
-	wp.handler = func(onSuccess func(resp <-chan interface{}), onFailed func(errs <-chan error)) {
+	wp.handler = func(onSuccess func(resp <-chan T), onFailed func(errs <-chan error)) {
 		go func() {
 			onSuccess(done)
 		}()

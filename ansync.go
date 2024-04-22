@@ -1,6 +1,6 @@
 package ansync
 
 type (
-	Task   func() (interface{}, error)
-	Action func() error
+	Task[T any] func() (T, error)
+	Action      func() error
 )

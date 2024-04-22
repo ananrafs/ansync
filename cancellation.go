@@ -20,8 +20,8 @@ func DoActionWithCancellation(ctx context.Context, act Action) error {
 	}
 }
 
-func DoTaskWithCancellation(ctx context.Context, task Task) (interface{}, error) {
-	done := make(chan interface{}, 1)
+func DoTaskWithCancellation[T any](ctx context.Context, task Task[T]) (result T, err error) {
+	done := make(chan T, 1)
 	fail := make(chan error, 1)
 
 	go func() {
@@ -39,10 +39,10 @@ func DoTaskWithCancellation(ctx context.Context, task Task) (interface{}, error)
 
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return result, ctx.Err()
 	case ret := <-done:
 		return ret, nil
 	case ret := <-fail:
-		return nil, ret
+		return result, ret
 	}
 }

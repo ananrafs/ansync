@@ -9,14 +9,14 @@ import (
 )
 
 func main() {
-	//DoWorkerPoolExample()
-	//DoCancelAndRetry()
-	//DoCancelTaskAndRetry()
+	DoWorkerPoolExample()
+	DoCancelAndRetry()
+	DoCancelTaskAndRetry()
 }
 
 func DoWorkerPoolExample() {
 	wp := ansync.DoWithWorkerPool(
-		[]ansync.Task{
+		[]ansync.Task[interface{}]{
 			// define task to perform
 			func() (interface{}, error) {
 				for i := 0; i < 10; i++ {
@@ -40,7 +40,7 @@ func DoWorkerPoolExample() {
 				return "natsu", nil
 			},
 		},
-		ansync.WithMaxWorker(2),
+		ansync.WithMaxWorker[interface{}](2),
 	)
 	// need to defer closer
 	defer wp.Await()
@@ -104,12 +104,12 @@ func DoCancelAndRetry() {
 func DoCancelTaskAndRetry() {
 	parentCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := ansync.DoTaskWithCancellation(parentCtx, func() (interface{}, error) {
+	resp, err := ansync.DoTaskWithCancellation(parentCtx, func() (int, error) {
 		return ansync.DoTaskWithRetry(
-			func() (interface{}, error) {
+			func() (int, error) {
 				childCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				defer cancel()
-				return ansync.DoTaskWithCancellation(childCtx, func() (interface{}, error) {
+				return ansync.DoTaskWithCancellation(childCtx, func() (int, error) {
 					for i := 0; i < 10; i++ {
 						fmt.Printf("%d second \n", i)
 						time.Sleep(time.Second)
