@@ -9,9 +9,10 @@ import (
 )
 
 func main() {
-	DoWorkerPoolExample()
-	DoCancelAndRetry()
-	DoCancelTaskAndRetry()
+	//DoWorkerPoolExample()
+	//DoCancelAndRetry()
+	//DoCancelTaskAndRetry()
+	DoWithPipeline()
 }
 
 func DoWorkerPoolExample() {
@@ -129,4 +130,52 @@ func DoCancelTaskAndRetry() {
 		fmt.Println("resp", resp)
 	}
 	//time.Sleep(20 * time.Second)
+}
+
+func DoWithPipeline() {
+	stream := make(chan int, 20)
+	go func() {
+		for i := 0; i < 100; i++ {
+			stream <- i
+		}
+	}()
+
+	out, err := ansync.DoWithPipeline(stream, []ansync.Pipe[int]{
+		// x2
+		func(in <-chan int) (out chan int, err error) {
+			out = make(chan int)
+			go func() {
+				for res := range in {
+					val := res
+					//fmt.Println(val, "from pipe 1")
+					out <- val * 2
+				}
+				close(out)
+			}()
+			return out, nil
+		},
+		// x10
+		func(in <-chan int) (out chan int, err error) {
+			out = make(chan int)
+			go func() {
+				for res := range in {
+					val := res
+					//fmt.Println(val, "from pipe 2")
+					out <- val * 10
+				}
+				close(out)
+			}()
+			return out, nil
+		},
+	})
+	if err != nil {
+		fmt.Println("[error]", err)
+	}
+	go func() {
+		for res := range out {
+			fmt.Println(res, "res")
+		}
+	}()
+
+	time.Sleep(20 * time.Second)
 }
